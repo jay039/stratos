@@ -101,10 +101,19 @@ export class APIEffect {
     }
 
     options.url = `/pp/${proxyAPIVersion}/proxy/${cfAPIVersion}/${options.url}`;
-    options.headers = this.addBaseHeaders(
-      apiAction.endpointGuid ||
-      state.requestData.endpoint, options.headers
-    );
+
+    const endpoints = apiAction.endpointGuid || state.requestData.endpoint;
+    if (typeof endpoints !== 'string') {
+      // Filter out endpoints that are currently being disconnected
+      const disconnectedEndpoints = Object.keys(endpoints).
+        filter(endpointGuid => {
+          const updating = state.request.endpoint[endpointGuid].updating;
+          return !!updating.disconnecting && updating.disconnecting.busy;
+        });
+      disconnectedEndpoints.forEach(guid => delete endpoints[guid]);
+    }
+
+    options.headers = this.addBaseHeaders(endpoints, options.headers);
 
     if (paginatedAction.flattenPagination) {
       options.params.set('page', '1');
@@ -358,6 +367,7 @@ export class APIEffect {
 
   addBaseHeaders(endpoints: IRequestEntityTypeState<EndpointModel> | string, header: Headers): Headers {
     const headers = header || new Headers();
+
     if (typeof endpoints === 'string') {
       headers.set(endpointHeader, endpoints);
     } else {
